@@ -1,0 +1,68 @@
+; =============================================================================
+; DS_Dual3_Win11.inf
+; Modernized Windows 10 / Windows 11 (x64 & ARM64) Still Image / WIA 2.0 Driver
+; Target Hardware: Minolta DiMAGE Scan Dual III (USB\VID_0686&PID_400D)
+; Internal Model:  Minolta #2889 ("MINOLTA FS-V3           ")
+; =============================================================================
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=Image
+ClassGUID={6bdd1fc6-810f-11d0-bec7-08002be2092f}
+Provider=%Provider%
+CatalogFile=DS_Dual3_Win11.cat
+DriverVer=10/26/2026,2.0.0.0
+PnpLockdown=1
+
+[DestinationDirs]
+DefaultDestDir=11
+
+[Manufacturer]
+%Mfg%=Models,NTamd64,NTarm64,NTx86
+
+; Windows 10 / 11 x64
+[Models.NTamd64]
+%USB\VID_0686&PID_400D.DeviceDesc% = Scanner2889.USB.NT,USB\VID_0686&PID_400D
+
+; Windows 10 / 11 ARM64
+[Models.NTarm64]
+%USB\VID_0686&PID_400D.DeviceDesc% = Scanner2889.USB.NT,USB\VID_0686&PID_400D
+
+; Legacy x86 fallback
+[Models.NTx86]
+%USB\VID_0686&PID_400D.DeviceDesc% = Scanner2889.USB.NT,USB\VID_0686&PID_400D
+
+; =============================================================================
+; DDInstall Section (delegates kernel USB Bulk IN/OUT to inbox usbscan.sys)
+; =============================================================================
+[Scanner2889.USB.NT]
+Include=sti.inf
+Needs=STI.USBSection
+SubClass=StillImage
+DeviceType=1
+DeviceSubType=0x1
+Capabilities=0x0
+DeviceData=Scanner2889.DeviceData
+AddReg=Scanner2889.AddReg.NT
+ICMProfiles="sRGB Color Space Profile.icm"
+
+[Scanner2889.USB.NT.Services]
+Include=sti.inf
+Needs=STI.USBSection.Services
+
+[Scanner2889.DeviceData]
+TwainDS="DS Dual3"
+Server=local
+UI DLL=sti.dll
+UI Class ID={4DB1AD10-3391-11D2-9A33-00C04FA36145}
+
+[Scanner2889.AddReg.NT]
+HKR,,HardwareConfig,1,2
+HKR,,DevLoader,,*NTKERN
+HKR,,NTMPDriver,,"usbscan.sys"
+HKR,,USDClass,,"{E4088F20-D799-11D2-BAFF-00A02491DF4E}"
+
+[Strings]
+Provider="Konica Minolta (Modernized Windows 11 Package)"
+Mfg="MINOLTA"
+USB\VID_0686&PID_400D.DeviceDesc="MINOLTA DiMAGE Scan Dual3"

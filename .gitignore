@@ -1,0 +1,36 @@
+# Original legacy installer archive
+/DD3100E.EXE
+
+# Compiled C/C++ object & debug files
+*.o
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.idb
+*.ipdb
+*.iobj
+
+# CMake build directories
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile.cmake
+
+# Compiled outputs in scanner_tool/ and wia2_driver/
+/scanner_tool/dimage_scan
+/scanner_tool/dimage_scan.exe
+/scanner_tool/test_protocol
+/scanner_tool/test_protocol.exe
+/wia2_driver/*.dll
+/wia2_driver/*.lib
+
+# OS & Editor temporary files
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.tmp
+/tmp_*

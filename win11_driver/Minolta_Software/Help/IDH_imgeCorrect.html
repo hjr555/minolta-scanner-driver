@@ -1,0 +1,383 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<HTML>
+<HEAD>
+   <META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=iso-8859-1">
+   <META NAME="GENERATOR" CONTENT="Mozilla/4.06 [ja] (WinNT; I) [Netscape]">
+   <TITLE>IMAGE CORRECTION</TITLE>
+<LINK rel="stylesheet" type="text/css" href="htmlhelp.css">
+</HEAD>
+<BODY>
+
+<H1>
+IMAGE CORRECTION</H1>
+
+<H2>
+<A NAME="IDH_imgeCorrect_01"></A>TONE-CURVE AND HISTOGRAM CORRECTION</H2>
+
+<DIV class="description">Click the tone-curve/histogram button to display the tone-curve/histogram dialog box. The tone curves are displayed at the top of the dialog box, the histogram is displayed at the bottom. <br><br>
+The tone curves and histogram allow corrections to be made to the contrast, brightness, and color balance of the image. The tone curve and histogram are linked so a change in one will make a corresponding change in the other. 
+<H3>
+&lt;How to use the tone curve></H3>
+
+<OL>
+<LI>
+Click on the arrow next to the channel list box to display the channels: R, G, B, RGB.
+
+<UL>
+<LI>
+When scanning color film, all four channels can be selected. When scanning black and white film, only the RGB channel can be selected.</LI>
+</UL>
+<LI>
+Select the appropriate channel to correct the image.
+
+<UL>
+<LI>
+To change the brightness or contrast of the image, select the RGB channel. To change the color balance, first determine the color cast of the image. It the image is too blue or yellow, select the blue (B) channel. If the image is too red or cyan, select the red (R) channel. If the image is too green or magenta, select the green (G) channel.</LI>
+</UL>
+<LI>
+Place the mouse pointer over the tone curve. Click and drag the curve.
+
+<UL>
+<LI>
+Each time the tone curve is clicked, a new node will be attached to the curve. The tone curve can be adjusted by clicking and dragging the nodes.</LI>
+<LI>
+The input and output levels of the mouse position are displayed.</LI>
+
+<LI>
+All corrections are applied to the prescan image.</LI>
+
+</UL>
+</OL>
+
+<H3>
+<A NAME="IDH_imgeCorrect_02"></A>CHANGING THE TONE CURVE BY FREEHAND</H3>
+
+<DIV class="description">This function allows the tone curves to be drawn with the mouse.
+<H3>
+&lt;How to change the tone curve></H3>
+
+<OL>
+<LI>
+Select the channel (R, G, B, RGB) to be corrected from the channel list box.
+<br>
+<LI>
+Click the freehand curve button.
+
+<UL>
+<LI>
+The cursor will change to the pencil shape.</LI>
+</UL>
+
+<LI>
+Draw a new tone curve by clicking and dragging on the graph.
+
+<UL>
+<LI>
+To smooth the curve, click the smooth curve button. Nodes will be automatically placed on the curve and can be adjusted with the mouse. With extreme freehand curves, the smooth curve button may significantly change the shape of the curve; press the undo button to return to the original freehand curve.</LI>
+
+<LI>
+The change will be reflected in the prescan image.</LI>
+</UL>
+</OL>
+</DIV>
+
+
+<H3>
+<A NAME="IDH_imgeCorrect_04"></A>WHITE, BLACK, AND GRAY POINT CORRECTIONS</H3>
+
+<DIV class="description">Advanced image corrections can be made by specifying the white, black, and gray points within the image. Locating an appropriate neutral area within the image is critical to correctly calibrate the software. When the dropper tool is selected, the RGB display is active and can be used to evaluate the image area.
+<H3>
+&lt;How to calibrate the software></H3>
+
+<OL>
+<LI>
+Click the white-point button.
+
+<UL>
+<LI>
+The mouse pointer will change to the white dropper tool.</LI>
+</UL>
+
+<LI>
+Click on the brightest neutral area of the image to define it as the white point.
+
+<UL>
+<LI>
+The values in the image will be adjusted based on the selected point. The default level for the white point is 255 for each RGB channel. To change the default white-point value, see the following section.</LI>
+<LI>
+The change will be reflected in the prescan image.</LI>
+</UL>
+<LI>
+Click the black-point button.
+
+<UL>
+<LI>
+The mouse pointer will change to the black dropper tool.</LI>
+</UL>
+
+<LI>
+Click on the darkest neutral area of the image to define it as the black point.
+
+<UL>
+<LI>
+The values in the image will be adjusted based on the selected point. The default level for the black point is 0 for each RGB channel. To change the default black-point value, see the following section.</LI>
+
+<LI>
+The change will be reflected in the prescan image.</LI>
+</UL>
+<LI>
+Click the gray-point button.
+
+<UL>
+<LI>
+The mouse pointer will change to the gray dropper tool.</LI>
+</UL>
+
+<LI>
+Click on a neutral area of the image to define it as the gray point.
+
+<UL>
+<LI>
+The area used to calibrate the gray point must be neutral. The brightness level of the area is not important, but if the area has a definate color, the image will not be color balanced correctly.</LI>
+</UL>
+</OL>
+</DIV>
+
+<H3>
+<A NAME="IDH_imgeCorrect_05"></A>SETTING THE WHITE AND BLACK POINT VALUES</H3>
+
+<DIV class="description">The white and black point values are set to 255 and 0 for each RGB level. Changing these values allow the calibration of an image with no true black or white. This is an advanced image-processing tool.
+<H3>
+&lt;How to change the white and black point values></H3>
+
+<OL>
+<LI>
+Double-click on either the white-point or black-point button.
+
+<UL>
+<LI>
+The point value setting dialog box will be displayed.</LI>
+</UL>
+
+<LI>
+Input the new white-point and black-point values. Click "OK" to set the values.
+
+<UL>
+<LI>
+With the point value setting dialog box open, the mouse pointer can be used to measure the color of any point on the prescan image. The RGB display shows the original values for the image on the left and the current values on the right.</LI>
+</UL>
+<LI>
+Calibrate the image following the steps in the previous section.</LI>
+</OL>
+</DIV>
+
+<H3>
+<A NAME="IDH_imgeCorrect_07"></A>VIEWING TONE-CURVE CORRECTIONS ON THE HISTOGRAM</H3>
+
+<DIV class="description">Simply click and hold the apply button to view the effect of tone-curve corrections on the histogram. When the button is released, the histogram of the original image will be displayed.</DIV>
+
+<H3>
+&lt;How to use the histogram></H3><br>
+The input slide bar has a white highlight slider (right), a gray gamma slider (middle), and a black shadow slider (left). The output slide bar has a white highlight slider (right) and a black shadow slider (left). The image can be corrected by dragging the sliders or entering the values in the text boxes next to the histogram.
+<OL>
+<LI>
+Drag the slider to adjust the levels or enter the values in the text box next to the histogram.
+
+<UL>
+<LI>
+All changes will be reflected in the prescan image.</LI>
+<LI>
+The gamma slider defines the mid-tones of the image. Dragging the gamma slider to the right will darken the image, and dragging it to the left will brighten the image.</LI>
+<LI>
+The input highlight slider sets the white level. All pixels to the right of the slider are set to 255 (white) and any image detail they may contain is lost. Moving the slider to the left increases the apparent contrast of the image.</LI>
+<LI>
+The input shadow slider sets the black level. All pixels to the left of the slider are set to 0 (black) and any image detail they may contain is lost. Moving the slider to the right increases the apparent contrast of the image.</LI>
+<LI>
+The output highlight and shadow sliders can be adjusted. Moving the sliders decreases the apparent contrast of the image.</LI>
+</UL>
+</OL>
+</DIV>
+
+<H3>
+<A NAME="IDH_imgeCorrect_03"></A>DISPLAYING THE RGB COLOR CHANNEL HISTOGRAMS</H3>
+
+<DIV class="description">Located just above the tone curve, the histogram RGB display button extends the tone curve and histogram dialog box to reveal the histograms for each color channel. The color histograms can be used to adjust the color balance of the prescan image. Clicking histogram RGB display button again hides the color histogram display.</DIV>
+<H3>
+<A NAME="IDH_imgeCorrect_08"></A>TONE CURVE AND HISTOGRAM AUTO-SETTING BUTTON</H3>
+
+<DIV class="description">Clicking the auto-setting button automatically corrects the image. The darkest pixels in the image are set to a black level of 0. The brightest pixels are set to a white level of 255. The remaining pixels are distributed evenly between them. To view the change with the histogram, press the apply button.</DIV>
+
+<H2>
+<A NAME="IDH_imgeCorrect_09"></A>BRIGHTNESS, CONTRAST, & COLOR-BALANCE CORRECTIONS</H2>
+
+<DIV class="description">Simply click the brightness, contrast, and color-balance button to display the dialog box. Corrections are made by simply dragging the sliders or entering the required value in the text box.
+<H3>
+&lt;About brightness, contrast, and color-balance corrections></H3>
+
+<OL>
+
+<UL>
+<LI>
+Brightness controls how light or dark the image is.</LI>
+<LI>
+Contrast controls the difference between the light and dark tones of the image. The apparent sharpness of the image is also influenced by contrast.</LI>
+<LI>
+The red, green, and blue sliders control the overall color of the image. To change the color balance, first determine the color cast of the image. It the image is too blue or yellow, adjust the blue slider. If the image is too red or cyan, adjust the red slider. If the image is too green or magenta, adjust the green slider.</LI>
+<LI>
+All changes will be reflected in the prescan image.</LI>
+</UL>
+</OL>
+</DIV>
+
+<H3>
+<A NAME="IDH_imgeCorrect_10"></A>BRIGHTNESS, CONTRAST, & COLOR-BALANCE AUTO-SETTING BUTTON</H3>
+
+<DIV class="description">When the auto-setting button is clicked, the brightness and contrast of the image are corrected automatically. The color balance is not affected.</DIV>
+
+<H2>
+<A NAME="IDH_imgeCorrect_11"></A>HUE, SATURATION, AND LIGHTNESS CORRECTIONS</H2>
+
+<DIV class="description">Simply click the hue, saturation, and lightness button to display the dialog box. Corrections are made by simply dragging the sliders or entering the required value in the text box. These controls adjust the image in reference to the HSB color model; the HSB color model defines color based upon human perception rather than photographic processes. This palette can be used to manipulate an image rather than creating a realistic representation.
+<H3>
+&lt;About hue, saturation, and lightness corrections></H3>
+
+<OL>
+
+<UL>
+<LI>
+The hue control is not a color-balancing tool. It is a creative tool. When adjusting the hue, each color in the image is assigned a new hue depending on the degree of rotation through the@HSB color space. </LI>
+<LI>
+Saturation controls the how vivid the colors are in the image. </LI>
+<LI>
+Lightness controls how light or dark the image is. Unlike the brightness control in the brightness, contrast, and color-balance palette, the lightness control does not change the apparent density of the colors equally.</LI>
+<LI>
+The palette shows two color samples under the controls. The upper sample is the original color space. The lower sample indicates the change in the color space compared to the original sample.</LI>
+<LI>
+All changes will be reflected in the prescan image.</LI>
+</UL>
+</OL>
+</DIV>
+
+<H3>
+<A NAME="IDH_imgeCorrect_12"></A>HUE, SATURATION, & LIGHTNESS AUTO-SETTING BUTTON</H3>
+
+<DIV class="description">When the auto-setting button is clicked, the saturation of the image is corrected automatically. The hue and lightness are not changed.</DIV>
+
+<H2>
+<A NAME="IDH_imgeCorrect_13"></A>VARIATION CORRECTIONS</H2>
+
+<DIV class="description">Variation dialog box allows an image to be corrected by comparing it to other slightly corrected images surrounding it. This is an easy method to correct images for individuals who are inexperienced in image processing or photofinishing.
+<H3>
+&lt;How use the variation dialog box></H3>
+
+<OL>
+<LI>
+Click the variation button.
+
+<UL>
+<LI>
+The variation dialog box will be displayed.</LI>
+</UL>
+<LI>
+Click the arrow on the left of the variation list box to select the image quality to be adjusted.
+<UL>
+<LI>
+Color balance, brightness and contrast, and saturation can be selected. If color balance is selected, a seven-image display will appear. If brightness and contrast is selected a nine-image display will appear. If saturation is selected, a three-image display will appear.</LI>
+</UL>
+
+<LI>
+Adjust the variation step slider to set the degree of correction between the central image and the surrounding images.
+
+<UL>
+<LI>
+The central image is the uncorrected prescan image. The amount of correction set with the slider is reflected in the surrounding images.</LI>
+<LI>
+Click the display-limit box to show when the correction shifts any part of the image outside the brightness range of 0 to 255. The area outside this range with be displayed in the reverse tone or color.</LI>
+</UL>
+<LI>
+Click on the best image among the surrounding frames.
+
+<UL>
+<LI>
+The central prescan image will be replaced by the chosen frame and the surrounding images will adjust accordingly. The amount of correction set with the slider is reflected in the surrounding images. Continue choosing variation images until the central image reflects the desired result.</LI>
+</UL>
+<LI>
+Close the variation dialog box to apply the correction to the prescan image.
+</LI>
+</OL>
+</DIV>
+
+<H2>
+<A NAME="IDH_imgeCorrect_19"></A>SELECTIVE-COLOR CORRECTIONS</H2>
+
+<DIV class="description">Simply click the selective-color button to display the dialog box. Corrections are made by simply dragging the sliders or entering the required value in the text box. The selective-color palette allows specific colors to be adjusted rather than changing the overall color cast of the image. For example, if the blue of the sky looks purplish, magenta can be subtracted from the blue color group with out affecting the other colors in the image.
+<H3>
+&lt;How to use the selective-color palette></H3>
+
+<OL>
+<LI>
+Use the color list box at the top of the palette to select the color to be adjusted.
+<UL>
+<LI>
+Red, green, blue, cyan, yellow, and magenta color groups are listed.</LI>
+</UL>
+
+<LI>
+Drag the Cyan (C), Magenta (M), Yellow (Y) or Black (K) slider or input the desired value in the text box to adjust the selected color.</LI>
+</OL>
+</DIV>
+
+<H2>
+<A NAME="IDH_imgeCorrect_20"></A>UNSHARP MASK</H2>
+
+<DIV class="description">Simply click the unsharp-mask button to display the dialog box. Corrections are made by simply dragging the sliders or entering the required value in the text box.<br><br>The unsharp mask sharpens edges in the image without affecting the overall contrast of the image. the effect of the unsharp mask is very subtle, but makes a significant improvement to the overall appearance of the image.<br><br>The effect of the unsharp mask cannot be viewed in the prescan image. It can only be seen in the final scan.
+<H3>
+&lt;About the unsharp mask></H3>
+
+<OL>
+<UL>
+<LI>
+Amount: can be adjusted between 0% and 500%. Adjusting the slider increases the level of contrast. If the value is too high, pixelation, a rough or grainy texture on the image, will be apparent. 150% to 200% is recommended for high quality printed images.</LI>
+<LI>
+Radius: can be adjusted between 0.1 and 5. The default setting is 1. Adjusting the slider increases the edge sharpness of the pixels. A radius of 1 or 2 is recommended for high quality printed images. Changes to the radius are more apparent on printed images than images displayed on a monitor.</LI>
+<LI>
+Threshold level: can be adjusted between 0 and 255. The default setting is 2. If the difference between the surrounding pixels is greater than the threshold level, that pixel is recognized as a sharp image pixel. When the level is set to 0, the whole image is sharpened. The threshold level can protect smooth gradations from edges and details to be sharpened.</LI>
+<LI>
+Shadow protection level: can be adjusted between 0 and 255. The default setting is 16. To limit the sharp pixels in the shadows. When the luminance level is greater than the shadow protection level, that pixel is recognized as a sharp pixel.</LI>
+</UL>
+</OL>
+</DIV>
+
+<H2>
+<A NAME="IDH_imgeCorrect_22"></A>UNDOING IMAGE CORRECTIONS</H2>
+
+<DIV class="description">Simply click the undo button to cancel the last image correction.</DIV>
+
+<H2>
+<A NAME="IDH_imgeCorrect_23"></A>REDOING IMAGE CORRECTIONS</H2>
+
+<DIV class="description">Simply click the redo button to apply a canceled image correction.</DIV>
+
+<H2>
+<A NAME="IDH_imgeCorrect_24"></A>RESETTING AN IMAGE-CORRECTION DIALOG BOX</H2>
+
+<DIV class="description">Simply click the reset button on the dialog box to reset all the corrections made.</DIV>
+
+<H2>
+<A NAME="IDH_imgeCorrect_25"></A>STORING IMAGE CORRECTIONS TEMPORARILY</H2>
+
+<DIV class="description">When the snapshot button is clicked, the current prescan image is stored as a thumbnail in the snapshot display area. Multiple snapshots can be stored while processing an image. To return to a specific set of corrections, simply click the snapshot.</DIV>
+
+<H2>
+<A NAME="IDH_imgeCorrect_26"></A>COMPARING PRE AND POST-CORRECTION IMAGES</H2>
+
+<DIV class="description">When the comparison display button is clicked, the image-correction display window is divided into two. The original prescan image is displayed on the left and the corrected image is displayed on the right.</DIV>
+
+<H2>
+<A NAME="IDH_imgeCorrect_27"></A>FIT-TO-WINDOW BUTTON</H2>
+
+<DIV class="description">Click the fit-to-window button to display the entire image area in the utility window. As the window is resized, the image will enlarged or reduced automatically.
+</DIV>
+
+</BODY>
+</HTML>

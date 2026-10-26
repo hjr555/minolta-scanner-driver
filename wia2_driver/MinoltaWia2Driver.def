@@ -1,0 +1,6 @@
+LIBRARY "MinoltaWia2Driver"
+EXPORTS
+    DllCanUnloadNow     PRIVATE
+    DllGetClassObject   PRIVATE
+    DllRegisterServer   PRIVATE
+    DllUnregisterServer PRIVATE

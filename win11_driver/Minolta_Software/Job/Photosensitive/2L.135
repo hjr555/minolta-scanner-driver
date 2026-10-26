@@ -1,0 +1,23 @@
+<JobName>
+<Japanese>é ê^ÉvÉäÉìÉg(2L)</Japanese>
+<English>2L</English>
+</JobName>
+
+<ScanSetting>
+<inputLock>OFF</inputLock>
+<outputLock>ON</outputLock>
+<inputRes>2099</inputRes>
+<outputRes>400</outputRes>
+<times>524</times>
+<unit>mm</unit>
+<inputSizeW>33.97</inputSizeW>
+<inputSizeH>24.24</inputSizeH>
+<outputSizeW>178.00</outputSizeW>
+<outputSizeH>127.00</outputSizeH>
+<trimmingSizeW>469</trimmingSizeW>
+<trimmingSizeH>336</trimmingSizeH>
+<GUIxOffset>0</GUIxOffset>
+<GUIyOffset>17</GUIyOffset>
+<xLength>2000</xLength>
+<yLength>2803</yLength>
+</ScanSetting>
