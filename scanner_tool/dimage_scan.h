@@ -132,6 +132,7 @@ typedef int (*dimage_transport_fn)(
 /* Scanner Device Handle */
 typedef struct {
     void               *os_handle;       /* Windows HANDLE to \\.\UsbScanN */
+    void               *ipc_mutex;       /* Windows named mutex for multi-process safety */
     char                device_path[64]; /* e.g. "\\\\.\\UsbScan0" */
     uint8_t             last_sense[22];  /* Last 22-byte REQUEST SENSE buffer */
     uint32_t            last_error_code; /* Decoded Minolta error code */
@@ -165,6 +166,7 @@ int  dimage_read10(dimage_scanner_t *dev, uint8_t data_type, uint16_t qual, uint
 int  dimage_write10(dimage_scanner_t *dev, uint8_t data_type, uint16_t qual, const uint8_t *buf, uint32_t len);
 
 /* Firmware Management (DS_Dual3.BIN) */
+bool dimage_find_firmware_path(const char *preferred_path, char *out_path, size_t max_len);
 uint32_t dimage_compute_firmware_checksum(const uint8_t *fw_data, size_t fw_len);
 int  dimage_is_firmware_loaded(dimage_scanner_t *dev, bool *loaded_out);
 int  dimage_upload_firmware_buffer(dimage_scanner_t *dev, const uint8_t *fw_data, size_t fw_len);
@@ -174,6 +176,7 @@ int  dimage_upload_firmware_file(dimage_scanner_t *dev, const char *bin_path, bo
 int  dimage_get_status(dimage_scanner_t *dev, dimage_status_t *status_out);
 int  dimage_get_light_status(dimage_scanner_t *dev, uint8_t *light_status_out);
 int  dimage_initialize_scanner(dimage_scanner_t *dev);
+int  dimage_recover_jammed_holder(dimage_scanner_t *dev);
 int  dimage_eject_holder(dimage_scanner_t *dev);
 int  dimage_retract_holder(dimage_scanner_t *dev);
 int  dimage_get_holder_frame(dimage_scanner_t *dev, uint8_t *holder_id_out, uint8_t *frame_out);

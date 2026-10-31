@@ -60,7 +60,9 @@ UI Class ID={4DB1AD10-3391-11D2-9A33-00C04FA36145}
 HKR,,HardwareConfig,1,2
 HKR,,DevLoader,,*NTKERN
 HKR,,NTMPDriver,,"usbscan.sys"
-HKR,,USDClass,,"{E4088F20-D799-11D2-BAFF-00A02491DF4E}"
+; Default to inbox sti.dll Generic USB Pass-Through USD so stisvc starts cleanly
+; even without Visual Studio; build_wia2.bat upgrades this to {E4088F20-D799-11D2-BAFF-00A02491DF4E}
+HKR,,USDClass,,"{4DB1AD10-3391-11D2-9A33-00C04FA36145}"
 
 [Strings]
 Provider="Konica Minolta (Modernized Windows 11 Package)"

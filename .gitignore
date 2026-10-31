@@ -1,5 +1,6 @@
 # Original legacy installer archive
 /DD3100E.EXE
+/win11_driver/*.cat
 
 # Compiled C/C++ object & debug files
 *.o

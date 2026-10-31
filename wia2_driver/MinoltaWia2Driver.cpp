@@ -270,15 +270,17 @@ public:
 
         if (!m_pRootItem) {
             LONG lFlagsRoot = WiaItemTypeFolder | WiaItemTypeDevice | WiaItemTypeRoot;
+            BSTR bstrRootName = SysAllocString(L"Root");
             HRESULT hr = wiasCreateDrvItem(
                 lFlagsRoot,
-                SysAllocString(L"Root"),
+                bstrRootName,
                 m_bstrRootFullItemName,
                 static_cast<IWiaMiniDrv *>(this),
                 0,
                 NULL,
                 &m_pRootItem
             );
+            SysFreeString(bstrRootName);
             if (FAILED(hr)) return hr;
 
             /* Create child Film Scanner item */
@@ -317,12 +319,23 @@ public:
         PMINIDRV_TRANSFER_CONTEXT pmdtc,
         LONG *plDevErrVal
     ) override {
-        (void)pWiasContext; (void)lFlags;
+        (void)lFlags;
         if (plDevErrVal) *plDevErrVal = 0;
         if (!pmdtc) return E_INVALIDARG;
 
         if (!EnsureHardwareReady()) {
             return E_FAIL;
+        }
+
+        /* Read any resolution/datatype overrides from WIA item properties */
+        if (pWiasContext) {
+            LONG xres = 0, datatype = 0;
+            if (SUCCEEDED(wiasReadPropLong(pWiasContext, WIA_IPS_XRES, &xres, NULL, FALSE)) && xres > 0) {
+                m_params.dpi = (uint16_t)xres;
+            }
+            if (SUCCEEDED(wiasReadPropLong(pWiasContext, WIA_IPA_DATATYPE, &datatype, NULL, FALSE))) {
+                m_params.channels = (datatype == WIA_DATA_GRAYSCALE) ? 1 : 3;
+            }
         }
 
         uint8_t *pixels = NULL;
@@ -331,7 +344,7 @@ public:
             return E_FAIL;
         }
 
-        /* Write to temporary BMP/TIFF and stream to WIA callback or memory buffer */
+        /* Write to temporary BMP and stream to WIA callback or memory buffer */
         char tmpPath[MAX_PATH] = {0};
         GetTempPathA(MAX_PATH, tmpPath);
         strcat_s(tmpPath, MAX_PATH, "minolta_wia_scan.bmp");
@@ -355,16 +368,21 @@ public:
         fseek(fp, 0, SEEK_SET);
 
         HRESULT hr = S_OK;
-        if (pmdtc->bTransferDataCB && pmdtc->pIWiaMiniDrvCallBack) {
-            WIA_DATA_CALLBACK_HEADER hdr;
-            memset(&hdr, 0, sizeof(hdr));
-            hdr.lSize      = sizeof(hdr);
-            hdr.guidFormatID = pmdtc->guidFormatID;
-            hdr.lBufferSize  = fileSize;
-            hdr.lPageCount   = 1;
+        BYTE *buf = (BYTE *)malloc((size_t)fileSize);
+        if (buf && fread(buf, 1, (size_t)fileSize, fp) == (size_t)fileSize) {
+            /* WiaImgFmt_MEMORYBMP expects raw DIB starting at BITMAPINFOHEADER (skipping 14-byte "BM" header) */
+            bool isMemoryBmp = (IsEqualGUID(pmdtc->guidFormatID, WiaImgFmt_MEMORYBMP) != 0);
+            BYTE *payloadPtr = (isMemoryBmp && fileSize > 14) ? (buf + 14) : buf;
+            LONG  payloadLen = (isMemoryBmp && fileSize > 14) ? (fileSize - 14) : fileSize;
 
-            BYTE *buf = (BYTE *)malloc((size_t)fileSize);
-            if (buf && fread(buf, 1, (size_t)fileSize, fp) == (size_t)fileSize) {
+            if (pmdtc->bTransferDataCB && pmdtc->pIWiaMiniDrvCallBack) {
+                WIA_DATA_CALLBACK_HEADER hdr;
+                memset(&hdr, 0, sizeof(hdr));
+                hdr.lSize        = sizeof(hdr);
+                hdr.guidFormatID = pmdtc->guidFormatID;
+                hdr.lBufferSize  = payloadLen;
+                hdr.lPageCount   = 1;
+
                 hr = pmdtc->pIWiaMiniDrvCallBack->MiniDrvCallback(
                     IT_MSG_DATA_HEADER, IT_STATUS_TRANSFER_TO_CLIENT,
                     0, 0, sizeof(hdr), &pmdtc->guidFormatID, (BYTE *)&hdr
@@ -372,14 +390,14 @@ public:
                 if (SUCCEEDED(hr)) {
                     hr = pmdtc->pIWiaMiniDrvCallBack->MiniDrvCallback(
                         IT_MSG_DATA, IT_STATUS_TRANSFER_TO_CLIENT,
-                        100, 0, fileSize, &pmdtc->guidFormatID, buf
+                        100, 0, payloadLen, &pmdtc->guidFormatID, payloadPtr
                     );
                 }
+            } else if (pmdtc->pTransferBuffer && pmdtc->lBufferSize >= payloadLen) {
+                memcpy(pmdtc->pTransferBuffer, payloadPtr, (size_t)payloadLen);
             }
-            free(buf);
-        } else if (pmdtc->pTransferBuffer && pmdtc->lBufferSize >= fileSize) {
-            fread(pmdtc->pTransferBuffer, 1, (size_t)fileSize, fp);
         }
+        free(buf);
 
         fclose(fp);
         DeleteFileA(tmpPath);
@@ -387,15 +405,72 @@ public:
     }
 
     STDMETHODIMP drvInitItemProperties(BYTE *pWiasContext, LONG lFlags, LONG *plDevErrVal) override {
-        (void)pWiasContext; (void)lFlags;
+        (void)lFlags;
         if (plDevErrVal) *plDevErrVal = 0;
+        if (!pWiasContext) return E_INVALIDARG;
+
+        LONG itemType = 0;
+        wiasGetItemType(pWiasContext, &itemType);
+
+        if (itemType & WiaItemTypeRoot) {
+            wiasWritePropLong(pWiasContext, WIA_DPS_OPTICAL_XRES, DIMAGE_OPTICAL_DPI);
+            wiasWritePropLong(pWiasContext, WIA_DPS_OPTICAL_YRES, DIMAGE_OPTICAL_DPI);
+            wiasWritePropLong(pWiasContext, WIA_DPS_DOCUMENT_HANDLING_CAPABILITIES, FILM_TPA);
+            wiasWritePropLong(pWiasContext, WIA_DPS_DOCUMENT_HANDLING_STATUS, TPA_READY);
+            return S_OK;
+        }
+
+        /* Child Film Item Properties */
+        LONG dpi    = m_params.dpi ? m_params.dpi : 1410;
+        LONG scale  = DIMAGE_OPTICAL_DPI / dpi;
+        if (scale < 1) scale = 1;
+        LONG width  = DIMAGE_MAX_WIDTH_PIXELS / scale;
+        LONG height = DIMAGE_MAX_HEIGHT_PIXELS / scale;
+        LONG stride = (width * 3 + 3) & ~3;
+
+        wiasWritePropLong(pWiasContext, WIA_IPA_DATATYPE, WIA_DATA_COLOR);
+        wiasWritePropLong(pWiasContext, WIA_IPA_DEPTH, 24);
+        wiasWritePropLong(pWiasContext, WIA_IPA_CHANNELS_PER_PIXEL, 3);
+        wiasWritePropLong(pWiasContext, WIA_IPA_BITS_PER_CHANNEL, 8);
+        wiasWritePropGuid(pWiasContext, WIA_IPA_FORMAT, WiaImgFmt_BMP);
+        wiasWritePropLong(pWiasContext, WIA_IPA_TYMED, TYMED_FILE);
+        wiasWritePropLong(pWiasContext, WIA_IPS_XRES, dpi);
+        wiasWritePropLong(pWiasContext, WIA_IPS_YRES, dpi);
+        wiasWritePropLong(pWiasContext, WIA_IPS_XPOS, 0);
+        wiasWritePropLong(pWiasContext, WIA_IPS_YPOS, 0);
+        wiasWritePropLong(pWiasContext, WIA_IPS_XEXTENT, width);
+        wiasWritePropLong(pWiasContext, WIA_IPS_YEXTENT, height);
+        wiasWritePropLong(pWiasContext, WIA_IPA_PIXELS_PER_LINE, width);
+        wiasWritePropLong(pWiasContext, WIA_IPA_NUMBER_OF_LINES, height);
+        wiasWritePropLong(pWiasContext, WIA_IPA_BYTES_PER_LINE, stride);
+        wiasWritePropLong(pWiasContext, WIA_IPA_BUFFER_SIZE, 65536);
         return S_OK;
     }
 
     STDMETHODIMP drvValidateItemProperties(BYTE *pWiasContext, LONG lFlags, ULONG nPropSpec,
                                            const PROPSPEC *pPropSpec, LONG *plDevErrVal) override {
-        (void)pWiasContext; (void)lFlags; (void)nPropSpec; (void)pPropSpec;
+        (void)lFlags; (void)nPropSpec; (void)pPropSpec;
         if (plDevErrVal) *plDevErrVal = 0;
+        if (!pWiasContext) return S_OK;
+
+        LONG itemType = 0;
+        wiasGetItemType(pWiasContext, &itemType);
+        if (!(itemType & WiaItemTypeRoot)) {
+            LONG xres = 1410;
+            wiasReadPropLong(pWiasContext, WIA_IPS_XRES, &xres, NULL, FALSE);
+            if (xres <= 0) xres = 1410;
+            LONG scale  = DIMAGE_OPTICAL_DPI / xres;
+            if (scale < 1) scale = 1;
+            LONG width  = DIMAGE_MAX_WIDTH_PIXELS / scale;
+            LONG height = DIMAGE_MAX_HEIGHT_PIXELS / scale;
+            LONG stride = (width * 3 + 3) & ~3;
+
+            wiasWritePropLong(pWiasContext, WIA_IPS_XEXTENT, width);
+            wiasWritePropLong(pWiasContext, WIA_IPS_YEXTENT, height);
+            wiasWritePropLong(pWiasContext, WIA_IPA_PIXELS_PER_LINE, width);
+            wiasWritePropLong(pWiasContext, WIA_IPA_NUMBER_OF_LINES, height);
+            wiasWritePropLong(pWiasContext, WIA_IPA_BYTES_PER_LINE, stride);
+        }
         return S_OK;
     }
 
@@ -408,9 +483,7 @@ public:
 
     STDMETHODIMP drvReadItemProperties(BYTE *pWiasContext, LONG lFlags, ULONG nPropSpec,
                                        const PROPSPEC *pPropSpec, LONG *plDevErrVal) override {
-        (void)pWiasContext; (void)lFlags; (void)nPropSpec; (void)pPropSpec;
-        if (plDevErrVal) *plDevErrVal = 0;
-        return S_OK;
+        return drvValidateItemProperties(pWiasContext, lFlags, nPropSpec, pPropSpec, plDevErrVal);
     }
 
     STDMETHODIMP drvLockWiaDevice(BYTE *pWiasContext, LONG lFlags, LONG *plDevErrVal) override {
@@ -434,7 +507,13 @@ public:
     STDMETHODIMP drvGetDeviceErrorStr(LONG lFlags, LONG lDevErrVal, LPOLESTR *ppszDevErrStr, LONG *plDevErr) override {
         (void)lFlags; (void)lDevErrVal;
         if (plDevErr) *plDevErr = 0;
-        if (ppszDevErrStr) *ppszDevErrStr = L"Minolta DiMAGE Scan Dual III Error";
+        if (!ppszDevErrStr) return E_INVALIDARG;
+        const WCHAR msg[] = L"Minolta DiMAGE Scan Dual III Error";
+        size_t cb = sizeof(msg);
+        LPOLESTR psz = (LPOLESTR)CoTaskMemAlloc(cb);
+        if (!psz) return E_OUTOFMEMORY;
+        memcpy(psz, msg, cb);
+        *ppszDevErrStr = psz;
         return S_OK;
     }
 

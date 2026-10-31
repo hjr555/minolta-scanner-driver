@@ -101,6 +101,12 @@ int dimage_open(dimage_scanner_t *dev, const char *explicit_path, bool verbose) 
     dev->verbose = verbose;
 
 #ifdef _WIN32
+    HANDLE hMutex = CreateMutexA(NULL, FALSE, "Global\\MinoltaDimageScanDual3Mutex");
+    if (!hMutex) {
+        hMutex = CreateMutexA(NULL, FALSE, "Local\\MinoltaDimageScanDual3Mutex");
+    }
+    dev->ipc_mutex = (void *)hMutex;
+
     if (explicit_path && explicit_path[0]) {
         HANDLE h = CreateFileA(
             explicit_path,
@@ -116,6 +122,7 @@ int dimage_open(dimage_scanner_t *dev, const char *explicit_path, bool verbose) 
                 fprintf(stderr, "[dimage] Failed to open %s (Win32 error %lu)\n",
                         explicit_path, GetLastError());
             }
+            if (dev->ipc_mutex) { CloseHandle((HANDLE)dev->ipc_mutex); dev->ipc_mutex = NULL; }
             return -1;
         }
         dev->os_handle = (void *)h;
@@ -123,8 +130,8 @@ int dimage_open(dimage_scanner_t *dev, const char *explicit_path, bool verbose) 
         return 0;
     }
 
-    /* Probe \\.\UsbScan0 .. \\.\UsbScan50 as in MFSIFLib2889.dll @ 0x10001dc7-0x10001eb1 */
-    for (int i = 0; i <= 50; ++i) {
+    /* Probe \\.\UsbScan0 .. \\.\UsbScan127 as in MFSIFLib2889.dll @ 0x10001dc7-0x10001eb1 */
+    for (int i = 0; i < 128; ++i) {
         char path[64];
         snprintf(path, sizeof(path), "\\\\.\\UsbScan%d", i);
         HANDLE h = CreateFileA(
@@ -162,8 +169,9 @@ int dimage_open(dimage_scanner_t *dev, const char *explicit_path, bool verbose) 
         }
         CloseHandle(h);
     }
+    if (dev->ipc_mutex) { CloseHandle((HANDLE)dev->ipc_mutex); dev->ipc_mutex = NULL; }
     if (verbose) {
-        fprintf(stderr, "[dimage] No Minolta DiMAGE Scan Dual III (VID_0686&PID_400D) found on \\\\.\\UsbScan0..50\n");
+        fprintf(stderr, "[dimage] No Minolta DiMAGE Scan Dual III (VID_0686&PID_400D) found on \\\\.\\UsbScan0..127\n");
     }
     return -1;
 #else
@@ -183,8 +191,13 @@ void dimage_close(dimage_scanner_t *dev) {
         CloseHandle((HANDLE)dev->os_handle);
         dev->os_handle = NULL;
     }
+    if (dev->ipc_mutex) {
+        CloseHandle((HANDLE)dev->ipc_mutex);
+        dev->ipc_mutex = NULL;
+    }
 #else
     dev->os_handle = NULL;
+    dev->ipc_mutex = NULL;
 #endif
 }
 
@@ -223,10 +236,16 @@ static int dimage_raw_transport(
     HANDLE h = (HANDLE)dev->os_handle;
     if (!h || h == INVALID_HANDLE_VALUE) return -1;
 
+    HANDLE hMtx = (HANDLE)dev->ipc_mutex;
+    if (hMtx) {
+        WaitForSingleObject(hMtx, 60000);
+    }
+
     DWORD transferred = 0;
     /* Phase 1: Send CDB */
     if (!WriteFile(h, cdb, (DWORD)cdb_len, &transferred, NULL) || transferred != (DWORD)cdb_len) {
         *status_out = 0xFA; /* Bus/write error code from MFSIFLib2889.dll @ 0x10002846 */
+        if (hMtx) ReleaseMutex(hMtx);
         return -1;
     }
 
@@ -235,12 +254,14 @@ static int dimage_raw_transport(
         transferred = 0;
         if (!ReadFile(h, data, (DWORD)data_len, &transferred, NULL) || transferred != (DWORD)data_len) {
             *status_out = 0x9F; /* Data IN error from MFSIFLib2889.dll @ 0x10002a83 */
+            if (hMtx) ReleaseMutex(hMtx);
             return -1;
         }
     } else if (dir == DIMAGE_DIR_OUT && data && data_len > 0) {
         transferred = 0;
         if (!WriteFile(h, data, (DWORD)data_len, &transferred, NULL) || transferred != (DWORD)data_len) {
             *status_out = 0xA3; /* Data OUT error from MFSIFLib2889.dll @ 0x10002a69 */
+            if (hMtx) ReleaseMutex(hMtx);
             return -1;
         }
     }
@@ -250,9 +271,11 @@ static int dimage_raw_transport(
     transferred = 0;
     if (!ReadFile(h, &sb, 1, &transferred, NULL) || transferred != 1) {
         *status_out = 0x9D; /* Status phase error from MFSIFLib2889.dll @ 0x10002b26 */
+        if (hMtx) ReleaseMutex(hMtx);
         return -1;
     }
     *status_out = sb;
+    if (hMtx) ReleaseMutex(hMtx);
 
     /* 1ms inter-command pacing delay as in MFSBaseLib2889.dll @ 0x1000c5bc */
     dimage_sleep_ms(1);
@@ -333,7 +356,9 @@ int dimage_wait_ready(dimage_scanner_t *dev, uint32_t timeout_ms) {
         if (dimage_test_unit_ready(dev) == 0) {
             return 0;
         }
-        if (dev->last_error_code != 0xA2 && elapsed > 0) {
+        /* Retry on Not Ready / Lamp Warming Up (0xA2) and Unit Attention (SK=0x06) */
+        uint8_t sk = (uint8_t)((dev->last_error_code >> 16) & 0x0F);
+        if (dev->last_error_code != 0xA2 && sk != 0x06 && sk != 0x02 && elapsed > 0) {
             return -1;
         }
         dimage_sleep_ms(100);
@@ -467,6 +492,97 @@ int dimage_upload_firmware_buffer(dimage_scanner_t *dev, const uint8_t *fw_data,
     return 0;
 }
 
+static bool file_exists_readable(const char *path) {
+    if (!path || !path[0]) return false;
+    FILE *fp = fopen(path, "rb");
+    if (fp) {
+        fclose(fp);
+        return true;
+    }
+    return false;
+}
+
+bool dimage_find_firmware_path(const char *preferred_path, char *out_path, size_t max_len) {
+    if (!out_path || max_len == 0) return false;
+    out_path[0] = '\0';
+
+    if (preferred_path && file_exists_readable(preferred_path)) {
+        snprintf(out_path, max_len, "%s", preferred_path);
+        return true;
+    }
+
+    const char *rel_candidates[] = {
+        "DS_Dual3.BIN",
+        "Firmware/DS_Dual3.BIN",
+        "Firmware\\DS_Dual3.BIN",
+        "../win11_driver/Minolta_Software/Firmware/DS_Dual3.BIN",
+        "..\\win11_driver\\Minolta_Software\\Firmware\\DS_Dual3.BIN"
+    };
+    for (size_t i = 0; i < sizeof(rel_candidates) / sizeof(rel_candidates[0]); ++i) {
+        if (file_exists_readable(rel_candidates[i])) {
+            snprintf(out_path, max_len, "%s", rel_candidates[i]);
+            return true;
+        }
+    }
+
+#ifdef _WIN32
+    /* Check directory of the running executable/DLL */
+    char mod_dir[MAX_PATH] = {0};
+    if (GetModuleFileNameA(NULL, mod_dir, MAX_PATH) > 0) {
+        char *slash = strrchr(mod_dir, '\\');
+        if (slash) {
+            *slash = '\0';
+            char cand[MAX_PATH];
+            snprintf(cand, sizeof(cand), "%s\\DS_Dual3.BIN", mod_dir);
+            if (file_exists_readable(cand)) {
+                snprintf(out_path, max_len, "%s", cand);
+                return true;
+            }
+            snprintf(cand, sizeof(cand), "%s\\Firmware\\DS_Dual3.BIN", mod_dir);
+            if (file_exists_readable(cand)) {
+                snprintf(out_path, max_len, "%s", cand);
+                return true;
+            }
+        }
+    }
+
+    /* Check Windows Registry HomePath (both 64-bit and WOW6432Node) */
+    const char *reg_keys[] = {
+        "SOFTWARE\\WOW6432Node\\MINOLTA\\DS_Dual3",
+        "SOFTWARE\\MINOLTA\\DS_Dual3",
+        "SOFTWARE\\WOW6432Node\\MINOLTA\\DS_Dual3Easy",
+        "SOFTWARE\\MINOLTA\\DS_Dual3Easy"
+    };
+    for (size_t i = 0; i < sizeof(reg_keys) / sizeof(reg_keys[0]); ++i) {
+        HKEY hKey = NULL;
+        if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, reg_keys[i], 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+            char home[MAX_PATH] = {0};
+            DWORD cb = sizeof(home) - 1;
+            DWORD type = 0;
+            if (RegQueryValueExA(hKey, "HomePath", NULL, &type, (LPBYTE)home, &cb) == ERROR_SUCCESS &&
+                (type == REG_SZ || type == REG_EXPAND_SZ)) {
+                RegCloseKey(hKey);
+                char cand[MAX_PATH];
+                snprintf(cand, sizeof(cand), "%s\\Firmware\\DS_Dual3.BIN", home);
+                if (file_exists_readable(cand)) {
+                    snprintf(out_path, max_len, "%s", cand);
+                    return true;
+                }
+            } else {
+                RegCloseKey(hKey);
+            }
+        }
+    }
+
+    const char *default_win_path = "C:\\Program Files (x86)\\Minolta\\DS_Dual3\\Firmware\\DS_Dual3.BIN";
+    if (file_exists_readable(default_win_path)) {
+        snprintf(out_path, max_len, "%s", default_win_path);
+        return true;
+    }
+#endif
+    return false;
+}
+
 int dimage_upload_firmware_file(dimage_scanner_t *dev, const char *bin_path, bool force) {
     if (!force) {
         bool already_loaded = false;
@@ -478,9 +594,15 @@ int dimage_upload_firmware_file(dimage_scanner_t *dev, const char *bin_path, boo
         }
     }
 
-    FILE *fp = fopen(bin_path, "rb");
+    char resolved_path[512];
+    if (!dimage_find_firmware_path(bin_path, resolved_path, sizeof(resolved_path))) {
+        fprintf(stderr, "[dimage] Cannot find firmware file: %s\n", bin_path ? bin_path : "DS_Dual3.BIN");
+        return -1;
+    }
+
+    FILE *fp = fopen(resolved_path, "rb");
     if (!fp) {
-        fprintf(stderr, "[dimage] Cannot open firmware file: %s\n", bin_path);
+        fprintf(stderr, "[dimage] Cannot open firmware file: %s\n", resolved_path);
         return -1;
     }
     fseek(fp, 0, SEEK_END);
@@ -611,23 +733,42 @@ int dimage_set_focus_position(dimage_scanner_t *dev, int16_t focus_steps) {
 }
 
 int dimage_initialize_scanner(dimage_scanner_t *dev) {
-    if (dimage_wait_ready(dev, 6000) != 0) return -1;
+    if (dimage_wait_ready(dev, 60000) != 0) return -1;
 
     /* WRITE(10) data_type=0x92, qual=0, len=8 (MFSBaseLib2889.dll @ 0x10004d56 -> 0x10005a40) */
     uint8_t init_payload[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
     if (dimage_write10(dev, DIMAGE_DT_INIT_MODE, 0x0000, init_payload, 8) != 0) {
         return -1;
     }
-    if (dimage_wait_ready(dev, 6000) != 0) return -1;
+    if (dimage_wait_ready(dev, 60000) != 0) return -1;
 
-    /* Check lamp status (0xA0) */
+    /* Poll cold-cathode fluorescent lamp status (0xA0) up to 60 seconds */
     uint8_t light = 0;
-    if (dimage_get_light_status(dev, &light) != 0) {
-        return -1;
+    for (int attempt = 0; attempt < 120; ++attempt) {
+        if (dimage_get_light_status(dev, &light) == 0 && light != 0) {
+            break;
+        }
+        if (dev->custom_transport != NULL) {
+            break;
+        }
+        dimage_sleep_ms(500);
     }
 
     /* Retract / home carrier (OBJECT POSITION 0x02 at 0x10004c88) */
     return dimage_retract_holder(dev);
+}
+
+/*
+ * Recovers the scanner if a film holder was left inside during power-on
+ * (which blocks the optical home/shading calibration and causes the front LED to blink).
+ */
+int dimage_recover_jammed_holder(dimage_scanner_t *dev) {
+    if (!dev) return -1;
+    dimage_release_unit(dev);
+    dimage_wait_ready(dev, 15000);
+    dimage_eject_holder(dev);
+    dimage_wait_ready(dev, 15000);
+    return 0;
 }
 
 int dimage_send_linear_gamma_lut(dimage_scanner_t *dev) {
@@ -904,6 +1045,14 @@ int dimage_start_scan(dimage_scanner_t *dev, uint8_t scan_mode_byte) {
  * High-Level Scan Pipeline (MFSBaseLib2889.dll @ 0x10002780 - 0x100029b0, 0x1000a660)
  * ============================================================================ */
 
+/*
+ * Restores and inverts 1970s/1980s Color Negative and Black & White Negative film.
+ * Uses a 4096-bin per-channel histogram sampled over the inner 90% of the frame
+ * (ignoring the outer 5% plastic film holder border / sprocket edge) to find the
+ * true 0.5th percentile (shadow/Dmax) and 99.5th percentile (orange mask / film base Dmin).
+ * This removes the orange mask, eliminates faded-film base fog, and prevents single
+ * dust specks or clear frame edges from skewing the exposure.
+ */
 static void dimage_invert_negative_buffer(
     uint8_t *pixels,
     uint32_t width,
@@ -914,45 +1063,102 @@ static void dimage_invert_negative_buffer(
 ) {
     if (film_type == DIMAGE_FILM_POSITIVE) return;
     size_t num_px = (size_t)width * height;
+    if (num_px == 0) return;
 
-    /* Color negative film has an orange mask (high R, medium G, low B Dmin transmittance).
-     * We find the 99th-percentile channel maxima (unexposed film base) to normalize each channel
-     * before inverting, producing neutral positive colors. */
-    if (bit_depth == 16) {
-        uint16_t *p16 = (uint16_t *)pixels;
-        uint16_t max_ch[3] = { 1, 1, 1 };
-        for (size_t i = 0; i < num_px; ++i) {
+    uint32_t x0 = width  / 20;
+    uint32_t x1 = width  - x0;
+    uint32_t y0 = height / 20;
+    uint32_t y1 = height - y0;
+    if (x1 <= x0) { x0 = 0; x1 = width; }
+    if (y1 <= y0) { y0 = 0; y1 = height; }
+
+    uint32_t *hist = (uint32_t *)calloc(3 * 4096, sizeof(uint32_t));
+    if (!hist) return;
+
+    size_t sample_count = 0;
+    uint16_t *p16 = (uint16_t *)pixels;
+
+    for (uint32_t y = y0; y < y1; ++y) {
+        for (uint32_t x = x0; x < x1; ++x) {
+            size_t idx = ((size_t)y * width + x) * channels;
             for (uint8_t c = 0; c < channels && c < 3; ++c) {
-                uint16_t v = p16[i * channels + c];
-                if (v > max_ch[c]) max_ch[c] = v;
+                uint32_t bin = 0;
+                if (bit_depth == 16) {
+                    bin = p16[idx + c] >> 4; /* 0..4095 */
+                } else {
+                    bin = (uint32_t)pixels[idx + c] << 4;
+                }
+                if (bin > 4095) bin = 4095;
+                hist[c * 4096 + bin]++;
+            }
+            sample_count++;
+        }
+    }
+
+    double low_val[3]  = { 0.0, 0.0, 0.0 };
+    double high_val[3] = { (bit_depth == 16) ? 65535.0 : 255.0,
+                           (bit_depth == 16) ? 65535.0 : 255.0,
+                           (bit_depth == 16) ? 65535.0 : 255.0 };
+
+    size_t low_target  = sample_count / 200; /* 0.5th percentile */
+    size_t high_target = sample_count - (sample_count / 200); /* 99.5th percentile */
+    if (high_target <= low_target) high_target = sample_count;
+
+    for (uint8_t c = 0; c < channels && c < 3; ++c) {
+        size_t accum = 0;
+        uint32_t low_bin = 0, high_bin = 4095;
+        for (uint32_t b = 0; b < 4096; ++b) {
+            accum += hist[c * 4096 + b];
+            if (accum >= low_target) {
+                low_bin = b;
+                break;
             }
         }
+        accum = 0;
+        for (uint32_t b = 0; b < 4096; ++b) {
+            accum += hist[c * 4096 + b];
+            if (accum >= high_target) {
+                high_bin = b;
+                break;
+            }
+        }
+        if (high_bin <= low_bin) {
+            low_bin  = 0;
+            high_bin = 4095;
+        }
+        double scale = (bit_depth == 16) ? 16.0 : (1.0 / 16.0);
+        low_val[c]  = (double)low_bin  * scale;
+        high_val[c] = (double)high_bin * scale;
+        if (high_val[c] - low_val[c] < 1.0) {
+            low_val[c]  = 0.0;
+            high_val[c] = (bit_depth == 16) ? 65535.0 : 255.0;
+        }
+    }
+    free(hist);
+
+    double inv_gamma = (film_type == DIMAGE_FILM_BW_NEG) ? (1.0 / 1.75) : (1.0 / 1.85);
+
+    if (bit_depth == 16) {
         for (size_t i = 0; i < num_px; ++i) {
             for (uint8_t c = 0; c < channels && c < 3; ++c) {
-                uint16_t v = p16[i * channels + c];
-                double norm = (double)v / (double)max_ch[c];
+                double v = (double)p16[i * channels + c];
+                double norm = (v - low_val[c]) / (high_val[c] - low_val[c]);
+                if (norm < 0.0) norm = 0.0;
                 if (norm > 1.0) norm = 1.0;
-                /* Invert transmittance and apply standard 2.2 display gamma */
                 double pos = 1.0 - norm;
-                pos = pow(pos, 1.0 / 1.8);
+                pos = pow(pos, inv_gamma);
                 p16[i * channels + c] = (uint16_t)(pos * 65535.0 + 0.5);
             }
         }
     } else {
-        uint8_t max_ch[3] = { 1, 1, 1 };
         for (size_t i = 0; i < num_px; ++i) {
             for (uint8_t c = 0; c < channels && c < 3; ++c) {
-                uint8_t v = pixels[i * channels + c];
-                if (v > max_ch[c]) max_ch[c] = v;
-            }
-        }
-        for (size_t i = 0; i < num_px; ++i) {
-            for (uint8_t c = 0; c < channels && c < 3; ++c) {
-                uint8_t v = pixels[i * channels + c];
-                double norm = (double)v / (double)max_ch[c];
+                double v = (double)pixels[i * channels + c];
+                double norm = (v - low_val[c]) / (high_val[c] - low_val[c]);
+                if (norm < 0.0) norm = 0.0;
                 if (norm > 1.0) norm = 1.0;
                 double pos = 1.0 - norm;
-                pos = pow(pos, 1.0 / 1.8);
+                pos = pow(pos, inv_gamma);
                 pixels[i * channels + c] = (uint8_t)(pos * 255.0 + 0.5);
             }
         }
@@ -1102,39 +1308,41 @@ int dimage_write_tiff(
 
     /* Layout:
      * 0..7:     TIFF Header (8 bytes)
-     * 8..133:   IFD (2 + 10*12 + 4 = 126 bytes)
-     * 134..139: BitsPerSample[3] (6 bytes)
-     * 140..147: XResolution RATIONAL (8 bytes)
-     * 148..155: YResolution RATIONAL (8 bytes)
-     * 156..end: Pixel data
+     * 8..157:   IFD (2 + 12*12 + 4 = 150 bytes)
+     * 158..163: BitsPerSample[3] (6 bytes)
+     * 164..171: XResolution RATIONAL (8 bytes)
+     * 172..179: YResolution RATIONAL (8 bytes)
+     * 180..end: Pixel data
      */
-    uint8_t hdr[156];
+    uint8_t hdr[180];
     memset(hdr, 0, sizeof(hdr));
     /* Little-endian TIFF magic ("II", 42, IFD offset = 8) */
     hdr[0] = 'I'; hdr[1] = 'I';
     cpu_to_le16(42, &hdr[2]);
     cpu_to_le32(8, &hdr[4]);
 
-    uint16_t num_tags = 10;
+    uint16_t num_tags = 12;
     cpu_to_le16(num_tags, &hdr[8]);
     uint8_t *ifd = &hdr[10];
 
-    uint32_t bps_offset  = 134;
-    uint32_t xres_offset = 140;
-    uint32_t yres_offset = 148;
-    uint32_t data_offset = 156;
+    uint32_t bps_offset  = 158;
+    uint32_t xres_offset = 164;
+    uint32_t yres_offset = 172;
+    uint32_t data_offset = 180;
 
-    write_ifd_entry(&ifd[0 * 12], 256, 4, 1, width);                                /* ImageWidth */
-    write_ifd_entry(&ifd[1 * 12], 257, 4, 1, height);                               /* ImageLength */
-    write_ifd_entry(&ifd[2 * 12], 258, 3, channels,
-                    channels == 1 ? bits_per_sample : bps_offset);                  /* BitsPerSample */
-    write_ifd_entry(&ifd[3 * 12], 259, 3, 1, 1);                                    /* Compression = None */
-    write_ifd_entry(&ifd[4 * 12], 262, 3, 1, (channels == 3) ? 2 : 1);              /* Photometric = RGB(2)/BlackIsZero(1) */
-    write_ifd_entry(&ifd[5 * 12], 273, 4, 1, data_offset);                          /* StripOffsets */
-    write_ifd_entry(&ifd[6 * 12], 277, 3, 1, channels);                             /* SamplesPerPixel */
-    write_ifd_entry(&ifd[7 * 12], 278, 4, 1, height);                               /* RowsPerStrip */
-    write_ifd_entry(&ifd[8 * 12], 279, 4, 1, image_bytes);                          /* StripByteCounts */
-    write_ifd_entry(&ifd[9 * 12], 282, 5, 1, xres_offset);                          /* XResolution */
+    write_ifd_entry(&ifd[0  * 12], 256, 4, 1, width);                               /* ImageWidth */
+    write_ifd_entry(&ifd[1  * 12], 257, 4, 1, height);                              /* ImageLength */
+    write_ifd_entry(&ifd[2  * 12], 258, 3, channels,
+                    channels == 1 ? bits_per_sample : bps_offset);                 /* BitsPerSample */
+    write_ifd_entry(&ifd[3  * 12], 259, 3, 1, 1);                                   /* Compression = None */
+    write_ifd_entry(&ifd[4  * 12], 262, 3, 1, (channels == 3) ? 2 : 1);             /* Photometric = RGB(2)/BlackIsZero(1) */
+    write_ifd_entry(&ifd[5  * 12], 273, 4, 1, data_offset);                         /* StripOffsets */
+    write_ifd_entry(&ifd[6  * 12], 277, 3, 1, channels);                            /* SamplesPerPixel */
+    write_ifd_entry(&ifd[7  * 12], 278, 4, 1, height);                              /* RowsPerStrip */
+    write_ifd_entry(&ifd[8  * 12], 279, 4, 1, image_bytes);                         /* StripByteCounts */
+    write_ifd_entry(&ifd[9  * 12], 282, 5, 1, xres_offset);                         /* XResolution */
+    write_ifd_entry(&ifd[10 * 12], 283, 5, 1, yres_offset);                         /* YResolution */
+    write_ifd_entry(&ifd[11 * 12], 296, 3, 1, 2);                                   /* ResolutionUnit = 2 (Inch) */
 
     /* BitsPerSample array (3 x uint16_t) */
     cpu_to_le16(bits_per_sample, &hdr[bps_offset + 0]);
@@ -1238,12 +1446,14 @@ int dimage_write_bmp24(
 static void print_usage(const char *prog) {
     printf("Minolta DiMAGE Scan Dual III (USB\\VID_0686&PID_400D) Modern Windows 11 Utility\n");
     printf("Usage:\n");
-    printf("  %s info     [--device \\\\.\\UsbScan0] [--firmware DS_Dual3.BIN]\n", prog);
-    printf("  %s eject    [--device \\\\.\\UsbScan0]\n", prog);
-    printf("  %s retract  [--device \\\\.\\UsbScan0]\n", prog);
-    printf("  %s frame N  [--device \\\\.\\UsbScan0]\n", prog);
-    printf("  %s scan     [--frame 1..6] [--dpi 2820|1410|705|352] [--bits 8|16]\n", prog);
-    printf("              [--film neg|pos|bw] [--multisample 1|2|4|8|16] [--out scan.tif]\n");
+    printf("  %s info       [--device \\\\.\\UsbScan0] [--firmware DS_Dual3.BIN]\n", prog);
+    printf("  %s eject      [--device \\\\.\\UsbScan0]\n", prog);
+    printf("  %s retract    [--device \\\\.\\UsbScan0]\n", prog);
+    printf("  %s reset      (Recovers blinking light if film holder was left in at power-on)\n", prog);
+    printf("  %s frame N    [--device \\\\.\\UsbScan0]\n", prog);
+    printf("  %s scan       [--frame 1..6] [--dpi 2820|1410|705|352] [--bits 8|16]\n", prog);
+    printf("                [--film neg|pos|bw] [--multisample 1|2|4|8|16] [--out scan.tif]\n");
+    printf("  %s scan-strip [--dpi 2820|1410|705] [--bits 8|16] [--film neg|pos|bw] [--out strip]\n", prog);
 }
 
 int main(int argc, char **argv) {
@@ -1327,9 +1537,34 @@ int main(int argc, char **argv) {
     } else if (strcmp(cmd, "retract") == 0) {
         printf("Retracting film holder...\n");
         rc = dimage_retract_holder(&dev);
+    } else if (strcmp(cmd, "reset") == 0) {
+        printf("Recovering scanner & ejecting film holder...\n");
+        rc = dimage_recover_jammed_holder(&dev);
+        printf("Please remove the film holder, wait 2 seconds, and re-insert it.\n");
     } else if (strcmp(cmd, "frame") == 0) {
         printf("Moving film holder to frame %u...\n", params.frame_index);
         rc = dimage_move_to_frame(&dev, params.frame_index);
+    } else if (strcmp(cmd, "scan-strip") == 0) {
+        dimage_status_t st;
+        uint8_t total_frames = 6;
+        if (dimage_get_status(&dev, &st) == 0 && st.holder_type == DIMAGE_HOLDER_SLIDE_MOUNT) {
+            total_frames = 4;
+        }
+        printf("Batch scanning %u frames at %u DPI (%u-bit)...\n", total_frames, params.dpi, params.bit_depth);
+        for (uint8_t f = 1; f <= total_frames; ++f) {
+            params.frame_index = f;
+            char frame_file[512];
+            snprintf(frame_file, sizeof(frame_file), "%s_frame%u.tif", out_path, f);
+            printf("  [%u/%u] Scanning frame %u -> %s...\n", f, total_frames, f, frame_file);
+            uint8_t *pixels = NULL;
+            uint32_t w = 0, h = 0, bpp = 0;
+            rc = dimage_scan_to_buffer(&dev, &params, &pixels, &w, &h, &bpp);
+            if (rc == 0 && pixels) {
+                rc = dimage_write_tiff(frame_file, pixels, w, h, params.channels, params.bit_depth, params.dpi);
+                free(pixels);
+            }
+            if (rc != 0) break;
+        }
     } else if (strcmp(cmd, "scan") == 0) {
         printf("Scanning Frame %u at %u DPI (%u-bit)...\n",
                params.frame_index, params.dpi, params.bit_depth);
